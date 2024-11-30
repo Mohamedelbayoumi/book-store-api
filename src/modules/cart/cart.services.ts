@@ -1,6 +1,6 @@
-import { Injectable, InternalServerErrorException } from "@nestjs/common"
+import { Injectable } from "@nestjs/common"
 import { InjectModel } from '@nestjs/mongoose'
-import { Model, Schema } from 'mongoose'
+import { Model, Schema, ClientSession } from 'mongoose'
 
 import { Cart } from './cart.schema'
 import { CartItem } from "./interfaces/cart-item.interface"
@@ -8,16 +8,16 @@ import { BookService } from '../books/books.services'
 
 
 @Injectable()
-export class CartService {
+export class CartServices {
 
     constructor(
         @InjectModel(Cart.name) private cartModel: Model<Cart>,
         private bookService: BookService
     ) { }
 
-    async findCart(userId: Schema.Types.ObjectId, populateOff?: boolean) {
+    async findCart(userId: string, populateOn?: boolean) {
 
-        if (!populateOff) {
+        if (populateOn) {
             return await this.cartModel.findOne({ userId })
                 .select('cart_items total_price ')
                 .populate('cart_items.book', 'name price -_id')
@@ -31,7 +31,7 @@ export class CartService {
     }
 
     private async createCart(
-        userId: Schema.Types.ObjectId, cartItemData: CartItem, bookPrice: number
+        userId: string, cartItemData: CartItem, bookPrice: number
     ) {
 
         await this.cartModel.create({
@@ -44,9 +44,9 @@ export class CartService {
         })
     }
 
-    async addCartItem(userId: Schema.Types.ObjectId, cartItemData: CartItem) {
+    async addCartItem(userId: string, cartItemData: CartItem) {
 
-        const book = await this.bookService.findBookById(cartItemData.book, 'name price')
+        const book = await this.bookService.findBookById((cartItemData.book as string), 'name price')
 
         const cart = await this.findCart(userId)
 
@@ -63,11 +63,11 @@ export class CartService {
 
     }
 
-    async removeCartItem(userId: Schema.Types.ObjectId, cartItemData: CartItem) {
+    async removeCartItem(userId: string, cartItemData: CartItem) {
 
         const cart = await this.findCart(userId, true)
 
-        const book = await this.bookService.findBookById(cartItemData.book, 'price -_id')
+        const book = await this.bookService.findBookById((cartItemData.book as string), 'price -_id')
 
         const removedCartItem = cart.cart_items.find(function (cartItem) {
             return cartItem.book == cartItemData.book
@@ -84,10 +84,12 @@ export class CartService {
         cart.save()
     }
 
-    async deleteCart(userId: string) {
+    async deleteCart(userId: string, transactionSession?: ClientSession) {
 
-        await this.cartModel.deleteOne({
-            userId
-        })
+        let transactionOptions: any = {}
+
+        if (transactionSession) transactionOptions.session = transactionSession
+
+        await this.cartModel.deleteOne({ userId }, transactionOptions)
     }
 }

@@ -3,16 +3,17 @@ import { ConfigService } from '@nestjs/config'
 import { Schema } from 'mongoose'
 import Stripe from 'stripe'
 
-import { CartService } from '../cart/cart.services'
+import { CartServices } from '../cart/cart.services'
 import { BookService } from '../books/books.services'
 import { OrdersServices } from '../orders/orders.services'
+import { OrderedBook } from '../orders/interfaces/ordered-book.interface'
 
 @Injectable()
 export class PaymentServices {
 
     constructor(
         @Inject('STRIPE_CLIENT') private stripeClient: Stripe,
-        private cartService: CartService,
+        private cartService: CartServices,
         private bookService: BookService,
         private configService: ConfigService,
         private orderService: OrdersServices
@@ -30,9 +31,11 @@ export class PaymentServices {
      * @param userId - The ID of the user whose cart should be used for the checkout session
      * @returns The URL of the created Stripe checkout session
      */
-    async createCheckoutSessionUrl(userId: Schema.Types.ObjectId, baseUrl: string) {
+    async createCheckoutSessionUrl(userId: string, baseUrl: string, depositPercentage: number) {
 
-        const books = await this.findBooksForPayment(userId)
+        const { books, total_price } = await this.findBooksForPayment(userId)
+
+        if (!depositPercentage) depositPercentage = 0
 
         const session = await this.stripeClient.checkout.sessions.create({
             line_items: books.map((purchasedBook) => {
@@ -47,18 +50,19 @@ export class PaymentServices {
                                 book_name: purchasedBook.name
                             }
                         },
-                        unit_amount: purchasedBook.price * 100
+                        unit_amount: (purchasedBook.price - (purchasedBook.price * +depositPercentage / 100)) * 100
                     },
                     quantity: purchasedBook.quantity
                 }
             }),
+            metadata: {
+                total_price
+            },
             client_reference_id: String(userId),
             mode: 'payment',
-            success_url: 'http://localhost:5000/success.html',
-            cancel_url: 'http://localhost:5000/cancel.html'
+            success_url: this.configService.get('CHECKOUT_SUCCESS_URL'),
+            cancel_url: this.configService.get('CHECKOUT_CANCEL_URL')
         })
-        console.log(session.line_items)
-        console.log('--------------------------------------')
         return session.url
     }
 
@@ -76,7 +80,7 @@ export class PaymentServices {
      */
     async handlePaymentSuccess(payload: Buffer, sig: string) {
 
-        const endPointSercret: string = await this.configService.get('END_POINT_SECRET')
+        const endPointSercret: string = await this.configService.get('Stripe_END_POINT_SECRET')
 
         let event: Stripe.Event
 
@@ -89,13 +93,13 @@ export class PaymentServices {
         if (
             event.type === 'checkout.session.completed' || event.type === 'checkout.session.async_payment_succeeded') {
 
-            const { id, amount_total, client_reference_id } = event.data.object
+            const { id, amount_total, client_reference_id, metadata } = event.data.object
 
             const lineItems = await this.getLineItems(id)
 
             const orderedBooks = lineItems.map(async (lineItem) => {
                 const { book_id, book_name } = (lineItem.price.product as Stripe.Product).metadata
-                // await this.bookService.decreaseBookCopies(book_id, lineItem.quantity)
+                await this.bookService.decreaseBookCopies(book_id, lineItem.quantity)
                 return {
                     bookName: book_name,
                     bookPrice: lineItem.price.unit_amount / 100,
@@ -103,15 +107,16 @@ export class PaymentServices {
                 }
             })
 
-            console.log(lineItems)
+            console.log(metadata.total_price)
 
-            // await this.orderService.create(
-            //     checkoutSessionCompletedObject.client_reference_id,
-            //     orderedBooks,
-            //     checkoutSessionCompletedObject.amount_total
-            // )
+            await this.orderService.createOrderForFullPayment(
+                client_reference_id,
+                orderedBooks,
+                amount_total,
+                +metadata.total_price
+            )
 
-            // await this.cartService.deleteCart(userId)
+            await this.cartService.deleteCart(client_reference_id)
         }
         else {
             throw new UnprocessableEntityException(`Unhandled event type ${event.type}`)
@@ -124,11 +129,16 @@ export class PaymentServices {
      * @param userId - The ID of the user whose cart to find.
      * @returns An array of book objects with their quantities.
      */
-    private async findBooksForPayment(userId: Schema.Types.ObjectId) {
+    private async findBooksForPayment(userId: string) {
 
-        const cart = await this.cartService.findCart(userId, true)
+        const { cart_items, total_price } = await this.cartService.findCart(userId, true)
 
-        return await this.bookService.findAndCheckBooksQuantity(cart.cart_items)
+        const purchasedBooks = await this.bookService.findAndCheckBooksQuantity(cart_items)
+
+        return {
+            books: purchasedBooks,
+            total_price: total_price
+        }
     }
 
     /**

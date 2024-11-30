@@ -3,7 +3,7 @@ import { MongooseModule } from '@nestjs/mongoose'
 import { JwtModule } from '@nestjs/jwt'
 
 import { Cart, CartSchema } from './cart.schema'
-import { CartService } from './cart.services'
+import { CartServices } from './cart.services'
 import { CartController } from './cart.controllers'
 import { jwtModuleAsyncOptions } from '../../common/configs/jwt.config'
 import { BookModule } from '../books/books.module'
@@ -15,8 +15,8 @@ import { BookModule } from '../books/books.module'
         JwtModule.registerAsync(jwtModuleAsyncOptions),
         BookModule
     ],
-    providers: [CartService],
+    providers: [CartServices],
     controllers: [CartController],
-    exports: [CartService]
+    exports: [CartServices]
 })
 export class CartModule { }

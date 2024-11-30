@@ -1,6 +1,8 @@
-import { Injectable, Inject, forwardRef, UnprocessableEntityException } from '@nestjs/common'
+import { Injectable, Inject, forwardRef, UnprocessableEntityException, InternalServerErrorException } from '@nestjs/common'
 import { InjectModel } from '@nestjs/mongoose'
-import { Model, Schema } from 'mongoose'
+import { Model, Schema, startSession } from 'mongoose'
+import { unlink } from 'fs'
+import { join } from 'path'
 
 import { Book, BookDocument } from './books.schema'
 import { AuthorService } from '../authors/authors.services'
@@ -22,7 +24,6 @@ export class BookService {
      * Finds books based on the provided filters.
      *
      * @param filters - An object containing the filters to apply to the book search.
-     * @param filters.name - A string to filter books by name.
      * @param filters.category - A string to filter books by category.
      * @param filters.allow_borrow - A boolean to filter books by whether they are available to borrow.
      * @param filters.sortOrder - An object specifying the sort order for the results.
@@ -32,17 +33,23 @@ export class BookService {
     async findBooks(filters: ListQueryParams) {
 
         let queryFilters: any = {}
-        const { name, category, allow_borrow, sortOrder, page = 1 } = filters
+        let sortObject: any = {}
 
-        if (name) queryFilters.name = { $regex: name, $options: 'i' }
+        const { category, allow_borrow, price_order, search_query, page = 1 } = filters
+
         if (category) queryFilters.category = category
         if (allow_borrow || allow_borrow === false) queryFilters.available_to_borrow = allow_borrow
+        if (price_order) sortObject.price = price_order
+        if (search_query) {
+            queryFilters.$text = { $search: search_query }
+            sortObject.score = { $meta: 'text_score' }
+        }
 
         return await this.bookModel.find(queryFilters)
-            .skip((page - 1) * 5)
-            .limit(5)
+            .skip((page - 1) * 10)
+            .limit(10)
             .select('name price')
-            .sort(sortOrder)
+            .sort(sortObject)
             .lean()
     }
 
@@ -54,9 +61,10 @@ export class BookService {
      * @param selcetData - An optional string specifying the fields to select from the book document.
      * @returns A promise that resolves to the book document matching the provided ID, with the specified fields selected.
      */
-    async findBookById(id: string, selcetData?: string | undefined) {
+    async findBookById(id: string, selcetData: string = '-__v') {
         return await this.bookModel.findById(id)
             .select(selcetData)
+            .populate('author', 'name')
             .exec()
     }
 
@@ -99,7 +107,6 @@ export class BookService {
             price: price,
             book_cover: bookCoverName
         })
-
     }
 
 
@@ -118,7 +125,7 @@ export class BookService {
      * @param bookData.availableToBorrow - The updated availability of the book for borrowing.
      * @returns A promise that resolves when the book has been updated.
      */
-    async updateBook(bookId: Schema.Types.ObjectId, bookData: IBookforUpdate) {
+    async updateBook(bookId: Schema.Types.ObjectId, bookData: IBookforUpdate, bookCoverName: string | undefined) {
 
         const {
             name,
@@ -131,10 +138,9 @@ export class BookService {
             availableToBorrow
         } = bookData
 
-
         const author = await this.authorService.findAuthorByName(authorName)
 
-        await this.bookModel.findByIdAndUpdate(bookId, {
+        const updateData: any = {
             name,
             description,
             category,
@@ -143,7 +149,11 @@ export class BookService {
             copies_in_stock: copiesInStock,
             author: author._id,
             available_to_borrow: availableToBorrow
-        })
+        }
+
+        if (bookCoverName) updateData.book_cover = bookCoverName
+
+        await this.bookModel.findByIdAndUpdate(bookId, updateData)
     }
 
 
@@ -168,23 +178,37 @@ export class BookService {
     }
 
 
-    /**
-     * Deletes a book from the database by its unique identifier.
-     *
-     * @param bookId - The unique identifier of the book to delete.
-     * @returns A promise that resolves when the book has been deleted.
-     */
+
     async deleteBook(bookId: Schema.Types.ObjectId) {
-        await this.bookModel.findByIdAndDelete(bookId)
+        const session = await startSession()
+        try {
+            await session.withTransaction(async () => {
+                const book = await this.bookModel.findByIdAndDelete(bookId)
+                    .select('book_cover')
+
+                unlink(join(__dirname, '..', 'public/books_images', book.book_cover), async (err) => {
+                    if (err) {
+                        await session.abortTransaction()
+                        throw new InternalServerErrorException(err.message)
+                    }
+                    console.log('Transaction successful');
+                })
+            })
+        } catch (err) {
+            await session.abortTransaction()
+            throw new InternalServerErrorException(err.message)
+        } finally {
+            await session.endSession()
+        }
     }
 
 
     /**
- * Finds books by the specified author ID.
- *
- * @param authorId - The unique identifier of the author to find books for.
- * @returns A promise that resolves to an array of books matching the provided author ID, with the name and price fields selected.
- */
+     * Finds books by the specified author ID.
+     *
+     * @param authorId - The unique identifier of the author to find books for.
+     * @returns A promise that resolves to an array of books matching the provided author ID, with the name and price fields selected.
+     */
     async findBooksByAuthorID(authorId: Schema.Types.ObjectId) {
         return await this.bookModel.find({ author: authorId })
             .select('name price')
@@ -199,8 +223,8 @@ export class BookService {
      */
     async findAndCheckBooksQuantity(cartItems: CartItem[]): Promise<PucrchasedBook[]> {
         let books: PucrchasedBook[] = []
-        for await (const item of cartItems) {
-            const book = await this.findBookById(item.book, 'name price copies_in_stock book_cover')
+        for (const item of cartItems) {
+            const book = await this.findBookById((item.book as string), 'name price copies_in_stock book_cover')
             this.checkBooksQuantity(book, item.quantity)
             books.push({
                 id: book._id,

@@ -21,11 +21,15 @@ export class Order {
     @Prop({ default: new Date().toISOString() })
     date: Date
 
-    @Prop({ enum: Status, default: Status.Confirmed })
+    @Prop({ enum: Status, required: true })
     status: Status
 
     @Prop({ required: true })
     total_price: number
+
+
+    @Prop({ required: true })
+    total_paid: number
 
     @Prop({ required: true, type: mongoose.Schema.Types.ObjectId, ref: 'User' })
     user: User

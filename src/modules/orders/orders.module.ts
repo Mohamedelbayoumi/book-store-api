@@ -6,12 +6,14 @@ import { OrdersConrtrollers } from './orders.controllers'
 import { OrdersServices } from './orders.services'
 import { Order, OrderSchema } from './orders.schema'
 import { jwtModuleAsyncOptions } from '../../common/configs/jwt.config'
+import { CartModule } from '../cart/cart.module'
 
 
 @Module({
     imports: [
         MongooseModule.forFeature([{ name: Order.name, schema: OrderSchema }]),
-        JwtModule.registerAsync(jwtModuleAsyncOptions)
+        JwtModule.registerAsync(jwtModuleAsyncOptions),
+        CartModule
     ],
     providers: [OrdersServices],
     controllers: [OrdersConrtrollers],

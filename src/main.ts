@@ -1,6 +1,9 @@
-import { NestFactory } from '@nestjs/core';
+import { NestFactory } from '@nestjs/core'
+import { SwaggerModule } from '@nestjs/swagger'
 import { connect } from '@ngrok/ngrok'
+
 import { AppModule } from './app.module';
+import { swaggerConfig } from './common/configs/swagger.config'
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule, {
@@ -11,11 +14,10 @@ async function bootstrap() {
     origin: '*'
   })
 
+  const documentFactory = () => SwaggerModule.createDocument(app, swaggerConfig)
+
+  SwaggerModule.setup('api-docs', app, documentFactory)
+
   await app.listen(5000);
-  // const listener = await connect({
-  //   addr: 5000,
-  //   authtoken_from_env: true
-  // })
-  // console.log(`Ingress established at: ${listener.url()}`)
 }
 bootstrap();

@@ -1,8 +1,10 @@
 import { IsBoolean, IsEnum, IsISO8601, IsNumber, IsString } from 'class-validator'
+import { Transform } from 'class-transformer'
 
 import { Category } from '../enums/category.enum'
+import { UploadImageDto } from '../dtos/upload-image-dto'
 
-export class UpdateBookDto {
+export class UpdateBookDto extends UploadImageDto {
 
     @IsString()
     readonly name: string
@@ -17,9 +19,11 @@ export class UpdateBookDto {
     readonly dateOfAuthorship: Date
 
     @IsNumber()
+    @Transform((value) => +value)
     readonly copiesInStock: number
 
     @IsNumber()
+    @Transform((value) => +value)
     readonly price: number
 
     @IsString()

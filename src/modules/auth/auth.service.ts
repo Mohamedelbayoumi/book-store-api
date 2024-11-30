@@ -38,7 +38,7 @@ export class AuthService {
         const comparisonResult = await this.bcryptJsService.compareHashing(password, user.password)
 
         if (!comparisonResult) {
-            throw new UnauthorizedException()
+            throw new UnauthorizedException('Incorrect Password')
         }
 
         const payload = { sub: user._id }
@@ -48,12 +48,9 @@ export class AuthService {
         }
 
         return {
-            accessToken: this.jwtService.sign(payload)
+            accessToken: this.jwtService.sign(payload),
+            role: payload['role']
         }
-    }
-
-    async getUsers() {
-        return await this.userService.getUsers()
     }
 }
 

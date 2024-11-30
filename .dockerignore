@@ -1,0 +1,14 @@
+.env
+
+.vscode
+
+/dist
+
+/node_modules
+
+/public/books_images/*
+
+Dockerfile
+
+docker-compose.yml
+

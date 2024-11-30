@@ -1,6 +1,8 @@
 import { UnsupportedMediaTypeException } from '@nestjs/common'
 import { diskStorage, FileFilterCallback } from 'multer'
 import { Request, Express } from 'express'
+import { unlink } from 'fs'
+import { join } from 'path'
 
 export const storage = diskStorage({
     destination(req, file, callback) {
@@ -17,6 +19,10 @@ export const fileFilter = (req: Request, file: Express.Multer.File, callback: Fi
         callback(null, true)
     }
     else {
-        callback(new UnsupportedMediaTypeException())
+        unlink(join(__dirname, 'public/books_images', file.filename), (err) => {
+            if (err) {
+                callback(new UnsupportedMediaTypeException('only png & jpeg mimetypes are allowed'))
+            }
+        })
     }
 }
