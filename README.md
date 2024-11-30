@@ -61,9 +61,9 @@ The api handles the process of buying books and the books will be shipped to the
   ```
 
    ```sh
-   // or you can isntall docker on your device 
+   /* or you can isntall docker on your device 
    and copy Dockerfile and docker-compose.yml 
-   and run this command to run the application
+   and run this command to run the application *
    docker-compose up
 
    
