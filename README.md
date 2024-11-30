@@ -46,8 +46,8 @@ The api handles the process of buying books and the books will be shipped to the
 
 ## Installation
 
-   ```sh
-   // Clone the repository
+  ```sh
+    // Clone the repository
     git clone https://github.com/Mohamedelbayoumi/Book-Store-Api.git
     
     // Navigate to the project directory
@@ -60,10 +60,12 @@ The api handles the process of buying books and the books will be shipped to the
     npm start
   ```
 
-   ```sh
-   /* or you can isntall docker on your device 
-   and copy Dockerfile and docker-compose.yml 
-   and run this command to run the application *
+  ```sh
+  : '
+    or you can install docker on your device 
+    and copy Dockerfile and docker-compose.yml 
+    and run this command to run the application.
+  '
    docker-compose up
 
    
